@@ -1,14 +1,149 @@
-odoo-real-estate/
-    ├── real_estate_leasing/
-    │   ├── __init__.py
-    │   ├── __manifest__.py
-    │   ├── models/
-    │   │   ├── __init__.py
-    │   │   ├── property.py
-    │   │   └── lease.py
-    │   ├── views/
-    │   │   ├── property_views.xml
-    │   │   ├── lease_views.xml
-    │   │   └── menus.xml
-    │   └── security/
-    │       └── ir.model.access.csv
+# real_estate_leasing/__init__.py
+from . import models
+
+# real_estate_leasing/__manifest__.py
+{
+    'name': 'Real Estate Leasing Management',
+    'version': '16.0.1.0.0',  # Use appropriate Odoo version
+    'category': 'Real Estate',
+    'summary': 'Manage real estate properties and leasing',
+    'sequence': 1,
+    'depends': ['base', 'mail', 'account'],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/property_views.xml',
+        'views/lease_views.xml',
+        'views/menus.xml',
+    ],
+    'installable': True,
+    'application': True,
+    'license': 'LGPL-3',
+}
+
+# real_estate_leasing/models/__init__.py
+from . import property
+from . import lease
+
+# real_estate_leasing/models/property.py
+from odoo import models, fields, api
+from odoo.exceptions import ValidationError
+
+class Property(models.Model):
+    _name = 'real.estate.property'
+    _description = 'Real Estate Property'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+
+    name = fields.Char('Property Name', required=True)
+    street = fields.Char('Street')
+    city = fields.Char('City')
+    state_id = fields.Many2one('res.country.state', string='State')
+    country_id = fields.Many2one('res.country', string='Country')
+    property_type = fields.Selection([
+        ('apartment', 'Apartment'),
+        ('house', 'House'),
+        ('commercial', 'Commercial'),
+        ('land', 'Land')
+    ], required=True)
+    size = fields.Float('Size (sqm)')
+    expected_revenue = fields.Float('Expected Monthly Revenue')
+    status = fields.Selection([
+        ('available', 'Available'),
+        ('rented', 'Rented'),
+        ('maintenance', 'Under Maintenance')
+    ], default='available', tracking=True)
+    lease_ids = fields.One2many('real.estate.lease', 'property_id', string='Leases')
+    current_lease_id = fields.Many2one('real.estate.lease', string='Current Lease',
+        compute='_compute_current_lease')
+
+    @api.depends('lease_ids')
+    def _compute_current_lease(self):
+        for prop in self:
+            current_lease = prop.lease_ids.filtered(
+                lambda l: l.state == 'active'
+            )
+            prop.current_lease_id = current_lease and current_lease[0] or False
+
+# real_estate_leasing/models/lease.py
+from odoo import models, fields, api
+
+class Lease(models.Model):
+    _name = 'real.estate.lease'
+    _description = 'Property Lease'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+
+    name = fields.Char('Reference', required=True, copy=False,
+        default=lambda self: 'New')
+    property_id = fields.Many2one('real.estate.property', required=True)
+    tenant_id = fields.Many2one('res.partner', string='Tenant', required=True)
+    start_date = fields.Date('Start Date', required=True)
+    end_date = fields.Date('End Date', required=True)
+    monthly_rent = fields.Float('Monthly Rent', required=True)
+    security_deposit = fields.Float('Security Deposit')
+    state = fields.Selection([
+        ('draft', 'Draft'),
+        ('active', 'Active'),
+        ('expired', 'Expired'),
+        ('terminated', 'Terminated')
+    ], default='draft', tracking=True)
+    invoice_ids = fields.One2many('account.move', 'lease_id', string='Invoices')
+
+# real_estate_leasing/security/ir.model.access.csv
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_real_estate_property_user,real.estate.property.user,model_real_estate_property,base.group_user,1,1,1,1
+access_real_estate_lease_user,real.estate.lease.user,model_real_estate_lease,base.group_user,1,1,1,1
+
+# real_estate_leasing/views/property_views.xml
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_property_form" model="ir.ui.view">
+        <field name="name">real.estate.property.form</field>
+        <field name="model">real.estate.property</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field name="status" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="property_type"/>
+                            <field name="size"/>
+                            <field name="expected_revenue"/>
+                        </group>
+                        <group>
+                            <field name="street"/>
+                            <field name="city"/>
+                            <field name="state_id"/>
+                            <field name="country_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Leases">
+                            <field name="lease_ids"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_property" model="ir.actions.act_window">
+        <field name="name">Properties</field>
+        <field name="res_model">real.estate.property</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_real_estate_root" 
+              name="Real Estate"
+              sequence="10"/>
+
+    <menuitem id="menu_property"
+              parent="menu_real_estate_root"
+              action="action_property"
+              sequence="10"/>
+</odoo>
