@@ -1,0 +1,14 @@
+odoo-real-estate/
+    ├── real_estate_leasing/
+    │   ├── __init__.py
+    │   ├── __manifest__.py
+    │   ├── models/
+    │   │   ├── __init__.py
+    │   │   ├── property.py
+    │   │   └── lease.py
+    │   ├── views/
+    │   │   ├── property_views.xml
+    │   │   ├── lease_views.xml
+    │   │   └── menus.xml
+    │   └── security/
+    │       └── ir.model.access.csv
